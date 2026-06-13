@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trình Mô Phỏng Lập Trình CNC Fanuc 20/80</title>
+    <style>
+        /* PHẦN SỬA ĐỔI 1: Thiết lập giao diện tối (Dark Mode) chuẩn IDE lập trình hệ máy CNC chuyên nghiệp */
+        body {
+            font-family: 'Consolas', 'Courier New', monospace;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            margin: 0;
+            padding: 30px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            background-color: #252526;
+            border: 1px solid #3c3c3c;
+            border-radius: 6px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            position: relative;
+        }
+
+        h2 {
+            color: #61afef;
+            border-bottom: 2px solid #3e4451;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+
+        /* PHẦN SỬA ĐỔI 2: Quản lý các cụm mã lệnh (Clusters) riêng biệt, lược bỏ toàn bộ ghi chú gốc */
+        .code-cluster {
+            margin-bottom: 25px;
+            padding: 10px;
+            border-left: 3px solid #4b5263;
+            background-color: #2c313c33;
+        }
+
+        /* PHẦN SỬA ĐỔI 3: Định dạng dòng mã và thiết lập hiệu ứng Hover linh hoạt */
+        .code-line {
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: background-color 0.15s ease;
+            line-height: 1.6;
+            font-size: 15px;
+        }
+
+        /* Khi dòng có tính năng line-trigger được kích hoạt hover */
+        .code-line.line-trigger:hover {
+            background-color: #2c313c;
+            cursor: pointer;
+            box-shadow: inset 2px 0 0 #61afef;
+        }
+
+        /* Phân định màu sắc Token chuyên biệt cho mã G, M và tham số số học */
+        .g-code { color: #e5c07b; font-weight: bold; }
+        .m-code { color: #98c379; font-weight: bold; }
+        .token-trigger {
+            padding: 1px 4px;
+            border-radius: 3px;
+            transition: background-color 0.15s ease;
+        }
+        .token-trigger:hover {
+            background-color: #4b5263;
+            color: #ffffff;
+            cursor: pointer;
+        }
+
+        .param { color: #abb2bf; }
+        .coord { color: #e06c75; }
+        .feed { color: #d19a66; }
+
+        /* PHẦN SỬA ĐỔI 4: Thiết kế Card hiển thị thông tin cấu trúc (Tooltip) động thông minh */
+        #tooltip-card {
+            position: absolute;
+            display: none;
+            width: 320px;
+            background-color: #21252b;
+            border: 1px solid #61afef;
+            border-radius: 6px;
+            padding: 15px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+            z-index: 1000;
+            pointer-events: none;
+        }
+
+        .tooltip-header {
+            font-size: 16px;
+            font-weight: bold;
+            color: #61afef;
+            margin-bottom: 8px;
+            border-bottom: 1px solid #3e4451;
+            padding-bottom: 4px;
+        }
+
+        .tooltip-abstract {
+            font-size: 13px;
+            background-color: #1e1e1e;
+            padding: 6px;
+            border-radius: 4px;
+            color: #98c379;
+            margin-bottom: 10px;
+        }
+
+        .tooltip-desc {
+            font-size: 13px;
+            color: #abb2bf;
+            margin-bottom: 10px;
+            line-height: 1.4;
+        }
+
+        .tooltip-alt {
+            font-size: 12px;
+            color: #e06c75;
+            border-top: 1px dashed #3e4451;
+            padding-top: 6px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Mã Nguồn Cấu Trúc Tổng Hợp 20/80 - Máy Phay Fanuc</h2>
+    
+    <div class="code-cluster">
+        <div class="code-line"><span class="param">O0100</span></div>
+        <div class="code-line">
+            <span class="token-trigger g-code" data-code="G21" data-abstract="G21" data-alt="G20 (Hệ Inch)" data-desc="Thiết lập đơn vị đo đầu vào là Milimét (mm).">G21</span>
+            <span class="token-trigger g-code" data-code="G90" data-abstract="G90" data-alt="G91 (Tọa độ tương đối)" data-desc="Thiết lập hệ tọa độ tuyệt đối. Mọi kích thước tính từ gốc tọa độ phôi ổn định.">G90</span>
+            <span class="token-trigger g-code" data-code="G40" data-abstract="G40" data-alt="G41 / G42 (Bù bán kính dao)" data-desc="Hủy bỏ lệnh bù bán kính dao cắt đã kích hoạt trước đó nhằm tránh lỗi nội suy vị trí.">G40</span>
+            <span class="token-trigger g-code" data-code="G80" data-abstract="G80" data-alt="G81 - G89 (Kích hoạt chu trình)" data-desc="Hủy bỏ toàn bộ các chu trình khoan, taro cố định (Canned Cycles) đang chạy ẩn.">G80</span>
+            <span class="token-trigger g-code" data-code="G49" data-abstract="G49" data-alt="G43 (Bù chiều dài trục Z)" data-desc="Hủy bỏ chế độ bù chiều dài hình học của trục dao Z.">G49</span>
+        </div>
+        <div class="code-line">
+            <span class="token-trigger g-code" data-code="G28" data-abstract="G28 X... Y... Z..." data-alt="G30 (Điểm tham chiếu thứ 2)" data-desc="Yêu cầu các trục chuyển động lùi thẳng về vị trí tham chiếu gốc của máy (Home).">G28</span>
+            <span class="token-trigger g-code" data-code="G91" data-abstract="G91" data-alt="G90 (Tọa độ tuyệt đối)" data-desc="Thiết lập hệ tọa độ tương đối. Điểm hiện tại của dao tự động quy ước thành gốc (0,0,0) cho lệnh kế tiếp.">G91</span>
+            <span class="param">Z0.0</span>
+        </div>
+    </div>
+
+    <div class="code-cluster">
+        <div class="code-line line-trigger" data-code="M06" data-abstract="T... M06" data-alt="Không áp dụng thay dao tự động với máy tiện trơn" data-desc="Chu trình thay dao tự động. Thực hiện gọi đài gá dao quay và lắp dao cơ học chỉ định vào trục chính.">
+            <span class="param">T01</span> <span class="m-code">M06</span>
+        </div>
+        <div class="code-line">
+            <span class="token-trigger g-code" data-code="G54" data-abstract="G54 (đến G59)" data-alt="G54.1 P1 - P48 (Hệ tọa độ mở rộng)" data-desc="Lựa chọn hệ tọa độ thiết lập phôi số 1 để tính toán điểm cắt thực tế.">G54</span>
+            <span class="token-trigger g-code" data-code="G90" data-abstract="G90" data-alt="G91" data-desc="Thiết lập hệ tọa độ tuyệt đối.">G90</span>
+            <span class="token-trigger g-code" data-code="G00" data-abstract="G00 X... Y... Z..." data-alt="G01 (Nội suy cắt gọt)" data-desc="Điều khiển dao di chuyển nhanh không cắt gọt với vận tốc tối đa của máy đến vị trí tiếp cận.">G00</span>
+            <span class="coord">X-60.0 Y-60.0</span> <span class="feed">S1800</span>
+            <span class="token-trigger m-code" data-code="M03" data-abstract="M03 S..." data-alt="M04 (Quay ngược), M05 (Dừng)" data-desc="Khởi động trục chính quay thuận chiều kim đồng hồ với tốc độ S (Vòng/Phút).">M03</span>
+        </div>
+        <div class="code-line">
+            <span class="token-trigger g-code" data-code="G43" data-abstract="G43 H... Z..." data-alt="G44 (Bù chiều dài hướng âm)" data-desc="Kích hoạt bù chiều dài dao hướng dương. Máy đọc dữ liệu chiều dài thực tế trong ô nhớ H tương ứng.">G43</span>
+            <span class="param">H01 Z10.0</span>
+            <span class="token-trigger m-code" data-code="M08" data-abstract="M08" data-alt="M09 (Tắt nước tưới nguội)" data-desc="Bật hệ thống bơm cung cấp dung dịch tưới nguội làm mát vùng gia công cắt gọt.">M08</span>
+        </div>
+        <div class="code-line line-trigger" data-code="G01" data-abstract="G01 X... Y... Z... F..." data-alt="G00 (Chạy nhanh), G02/G03 (Cung tròn)" data-desc="Nội suy đường thẳng. Cắt gọt theo đường thẳng từ vị trí hiện tại đến tọa độ chỉ định với tốc độ tiến dao F.">
+            <span class="g-code">G01</span> <span class="coord">Z-5.0</span> <span class="feed">F150</span>
+        </div>
+        <div class="code-line line-trigger" data-code="G41" data-abstract="G41 D... X... Y..." data-alt="G42 (Bù phải), G40 (Hủy bù)" data-desc="Bù bán kính dao bên Trái đường chạy. Máy tự động tính toán dịch chuyển dao ra một khoảng bằng bán kính trong ô nhớ D.">
+            <span class="g-code">G41</span> <span class="param">D01</span> <span class="coord">X-50.0 Y-40.0</span> <span class="feed">F300</span>
+        </div>
+        <div class="code-line line-trigger" data-code="G01" data-abstract="G01 X... Y... Z... F..." data-alt="G00, G02/G03" data-desc="Nội suy đường thẳng. Cắt gọt thẳng từ vị trí hiện tại đến đích.">
+            <span class="g-code">G01</span> <span class="coord">Y40.0</span> <span class="feed">F300</span>
+        </div>
+        <div class="code-line line-trigger" data-code="G02" data-abstract="G02 X... Y... R... F..." data-alt="G03 (Nội suy cung ngược chiều)" data-desc="Nội suy cung tròn Thuận chiều kim đồng hồ đến điểm đích X, Y sử dụng giá trị bán kính cung R.">
+            <span class="g-code">G02</span> <span class="coord">X-40.0 Y50.0</span> <span class="param">R10.0</span>
+        </div>
+        <div class="code-line line-trigger" data-code="G01" data-abstract="G01 X... Y... Z... F..." data-alt="G00, G02/G03" data-desc="Nội suy đường thẳng. Cắt gọt thẳng từ vị trí hiện tại đến đích.">
+            <span class="g-code">G01</span> <span class="coord">X40.0</span>
+        </div>
+        <div class="code-line line-trigger" data-code="G02" data-abstract="G02 X... Y... R... F..." data-alt="G03" data-desc="Nội suy cung tròn Thuận chiều kim đồng hồ đến điểm đích X, Y sử dụng giá trị bán kính cung R.">
+            <span class="g-code">G02</span> <span class="coord">X50.0 Y40.0</span> <span class="param">R10.0</span>
+        </div>
+        <div class="code-line line-trigger" data-code="G01" data-abstract="G01 X... Y... Z... F..." data-alt="G00, G02/G03" data-desc="Nội suy đường thẳng. Cắt gọt thẳng từ vị trí hiện tại đến đích.">
+            <span class="g-code">G01</span> <span class="coord">Y-40.0</span>
+        </div>
+        <div class="code-line line-trigger" data-code="G02" data-abstract="G02 X... Y... R... F..." data-alt="G03" data-desc="Nội suy cung tròn Thuận chiều kim đồng hồ đến điểm đích X, Y sử dụng giá trị bán kính cung R.">
+            <span class="g-code">G02</span> <span class="coord">X40.0 Y-50.0</span> <span class="param">R10.0</span>
+        </div>
+        <div class="code-line line-trigger" data-code="G01" data-abstract="G01 X... Y... Z... F..." data-alt="G00, G02/G03" data-desc="Nội suy đường thẳng. Cắt gọt thẳng từ vị trí hiện tại đến đích.">
+            <span class="g-code">G01</span> <span class="coord">X-40.0</span>
+        </div>
+        <div class="code-line line-trigger" data-code="G02" data-abstract="G02 X... Y... R... F..." data-alt="G03" data-desc="Nội suy cung tròn Thuận chiều kim đồng hồ đến điểm đích X, Y sử dụng giá trị bán kính cung R.">
+            <span class="g-code">G02</span> <span class="coord">X-50.0 Y-40.0</span> <span class="param">R10.0</span>
+        </div>
+        <div class="code-line">
+            <span class="token-trigger g-code" data-code="G40" data-abstract="G40" data-alt="G41 / G42" data-desc="Hủy bỏ lệnh bù bán kính dao cắt để đưa dao ra ngoài phôi an toàn.">G40</span>
+            <span class="token-trigger g-code" data-code="G01" data-abstract="G01 X... Y... Z... F..." data-alt="G00" data-desc="Nội suy đường thẳng điều khiển dao lùi xa biên dạng.">G01</span>
+            <span class="coord">X-60.0 Y-60.0</span>
+        </div>
+        <div class="code-line line-trigger" data-code="G00" data-abstract="G00 X... Y... Z..." data-alt="G01" data-desc="Điều khiển dao di chuyển nhanh không cắt gọt để rút lên khoảng cao an toàn.">
+            <span class="g-code">G00</span> <span class="coord">Z10.0</span>
+        </div>
+    </div>
+
+    <div class="code-cluster">
+        <div class="code-line line-trigger" data-code="G00" data-abstract="G00 X... Y... Z..." data-alt="G01" data-desc="Điều khiển dao di chuyển nhanh không cắt gọt đến tâm điểm bắt đầu hốc trong.">
+            <span class="g-code">G00</span> <span class="coord">X0.0 Y-20.0</span>
+        </div>
+        <div class="code-line line-trigger" data-code="G01" data-abstract="G01 X... Y... Z... F..." data-alt="G00" data-desc="Nội suy đường thẳng tiến dao xuống độ sâu phay hốc trong Z-5.0.">
+            <span class="g-code">G01</span> <span class="coord">Z-5.0</span> <span class="feed">F150</span>
+        </div>
+        <div class="code-line line-trigger" data-code="G03" data-abstract="G03 X... Y... I... J... F..." data-alt="G02 (Nội suy cung thuận chiều)" data-desc="Nội suy cung tròn Ngược chiều kim đồng hồ. Dùng I, J để định vị khoảng cách tương đối từ điểm bắt đầu đến tâm vòng tròn 360 độ.">
+            <span class="g-code">G03</span> <span class="coord">X0.0 Y-20.0</span> <span class="param">I0.0 J20.0</span> <span class="feed">F250</span>
+        </div>
+        <div class="code-line">
+            <span class="token-trigger g-code" data-code="G00" data-abstract="G00 X... Y... Z..." data-alt="G01" data-desc="Điều khiển dao di chuyển nhanh không cắt gọt rút dao lên cao.">G00</span>
+            <span class="coord">Z20.0</span>
+            <span class="token-trigger m-code" data-code="M09" data-abstract="M09" data-alt="M08 (Bật nước)" data-desc="Tắt hệ thống cung cấp dung dịch làm mát/tưới nguội sau công đoạn phay hốc.">M09</span>
+        </div>
+        <div class="code-line">
+            <span class="token-trigger g-code" data-code="G28" data-abstract="G28 X... Y... Z..." data-alt="G30" data-desc="Đưa trục di chuyển về điểm gốc tham chiếu của máy.">G28</span>
+            <span class="token-trigger g-code" data-code="G91" data-abstract="G91" data-alt="G90" data-desc="Thiết lập hệ tọa độ tương đối.">G91</span>
+            <span class="coord">Z0.0</span>
+            <span class="token-trigger m-code" data-code="M05" data-abstract="M05" data-alt="M03 / M04 (Bật quay trục)" data-desc="Ngắt truyền động lực, dừng quay trục chính máy phay hoàn toàn.">M05</span>
+        </div>
+    </div>
+
+    <div class="code-cluster">
+        <div class="code-line line-trigger" data-code="M06" data-abstract="T... M06" data-alt="Không áp dụng" data-desc="Chu trình thay dao tự động. Chạy đài đổi sang dao khoan chuyên dụng T02.">
+            <span class="param">T02</span> <span class="m-code">M06</span>
+        </div>
+        <div class="code-line">
+            <span class="token-trigger g-code" data-code="G54" data-abstract="G54" data-alt="G55-G59" data-desc="Lựa chọn hệ tọa độ thiết lập phôi số 1.">G54</span>
+            <span class="token-trigger g-code" data-code="G90" data-abstract="G90" data-alt="G91" data-desc="Thiết lập hệ tọa độ tuyệt đối.">G90</span>
+            <span class="token-trigger g-code" data-code="G00" data-abstract="G00 X... Y... Z..." data-alt="G01" data-desc="Điều khiển dao di chuyển nhanh không cắt gọt đến tọa độ tâm lỗ thứ 1.">G00</span>
+            <span class="coord">X25.0 Y25.0</span> <span class="feed">S1200</span>
+            <span class="token-trigger m-code" data-code="M03" data-abstract="M03 S..." data-alt="M04, M05" data-desc="Bật trục chính quay thuận với tốc độ S chỉ định.">M03</span>
+        </div>
+        <div class="code-line">
+            <span class="token-trigger g-code" data-code="G43" data-abstract="G43 H... Z..." data-alt="G44" data-desc="Kích hoạt bù chiều dài dao hướng dương cho mũi khoan T02 sử dụng ô lưu trữ H02.">G43</span>
+            <span class="param">H02 Z10.0</span>
+            <span class="token-trigger m-code" data-code="M08" data-abstract="M08" data-alt="M09" data-desc="Bật hệ thống bơm cung cấp dung dịch tưới nguội làm mát.">M08</span>
+        </div>
+        <div class="code-line line-trigger" data-code="G83" data-abstract="G83 X... Y... Z... R... Q... F..." data-alt="G73 (Khoan bẻ phoi nhanh), G81 (Khoan thường)" data-desc="Chu trình cố định khoan sâu ngắt phoi tự động. Dao xuống chiều sâu Q rồi lùi hẳn về mặt phẳng an toàn R để thoát phoi triệt để trước khi ăn dao tiếp tục đến đích Z.">
+            <span class="g-code">G83</span> <span class="coord">Z-15.0</span> <span class="param">R2.0 Q3.0</span> <span class="feed">F100</span>
+        </div>
+        <div class="code-line"><span class="coord">X-25.0 Y25.0</span></div>
+        <div class="code-line"><span class="coord">X-25.0 Y-25.0</span></div>
+        <div class="code-line"><span class="coord">X25.0 Y-25.0</span></div>
+    </div>
+
+    <div class="code-cluster">
+        <div class="code-line">
+            <span class="token-trigger g-code" data-code="G80" data-abstract="G80" data-alt="G81-G89" data-desc="Hủy bỏ hiệu lực chu trình cố định khoan sâu G83 đã thực hiện xong để tránh lỗi dịch chuyển các dòng tiếp theo.">G80</span>
+            <span class="token-trigger m-code" data-code="M09" data-abstract="M09" data-alt="M08" data-desc="Tắt hệ thống cung cấp dung dịch tưới nguội.">M09</span>
+        </div>
+        <div class="code-line line-trigger" data-code="G00" data-abstract="G00 X... Y... Z..." data-alt="G01" data-desc="Điều khiển dao di chuyển nhanh không cắt gọt rút dao lên cao an toàn khỏi bề mặt phôi gia công.">
+            <span class="g-code">G00</span> <span class="coord">Z50.0</span>
+        </div>
+        <div class="code-line">
+            <span class="token-trigger g-code" data-code="G28" data-abstract="G28 X... Y... Z..." data-alt="G30" data-desc="Đưa trục di chuyển về điểm gốc tham chiếu máy.">G28</span>
+            <span class="token-trigger g-code" data-code="G91" data-abstract="G91" data-alt="G90" data-desc="Thiết lập hệ tọa độ tương đối.">G91</span>
+            <span class="coord">Z0.0</span>
+            <span class="token-trigger m-code" data-code="M05" data-abstract="M05" data-alt="M03 / M04" data-desc="Dừng quay trục chính máy phay.">M05</span>
+        </div>
+        <div class="code-line">
+            <span class="token-trigger g-code" data-code="G28" data-abstract="G28 X... Y... Z..." data-alt="G30" data-desc="Đưa bàn máy về gốc máy theo tọa độ tương đối.">G28</span>
+            <span class="token-trigger g-code" data-code="G91" data-abstract="G91" data-alt="G90" data-desc="Thiết lập hệ tọa độ tương đối.">G91</span>
+            <span class="coord">X0.0 Y0.0</span>
+        </div>
+        <div class="code-line line-trigger" data-code="M30" data-abstract="M30" data-alt="M02 (Kết thúc thông thường)" data-desc="Kết thúc toàn bộ chương trình gia công, tắt động cơ, tự động đặt lại bộ đếm lưu trữ và đưa con trỏ điều khiển về dòng lệnh đầu tiên.">
+            <span class="m-code">M30</span>
+        </div>
+    </div>
+</div>
+
+<div id="tooltip-card">
+    <div class="tooltip-header" id="tt-title">Mã Lệnh</div>
+    <div class="tooltip-abstract" id="tt-abstract">Cấu trúc: </div>
+    <div class="tooltip-desc" id="tt-desc">Công dụng: </div>
+    <div class="tooltip-alt" id="tt-alt">Lựa chọn thay thế: </div>
+</div>
+
+<script>
+    // BIẾN TOÀN CỤC THEO DÕI TRẠNG THÁI HỆ THỐNG
+    let lockedElement = null;  // Lưu trữ phần tử hiện tại đang bị khóa cứng (bởi sự kiện click)
+    let hoveredElement = null; // Lưu trữ phần tử hiện tại con trỏ chuột đang nằm trên
+
+    // TRUY XUẤT ĐẾN CÁC THÈ HIỂN THỊ NỘI DUNG TRÊN CARD TOOLTIP
+    const tooltip = document.getElementById('tooltip-card');
+    const ttTitle = document.getElementById('tt-title');
+    const ttAbstract = document.getElementById('tt-abstract');
+    const ttDesc = document.getElementById('tt-desc');
+    const ttAlt = document.getElementById('tt-alt');
+
+    // HÀM CẬP NHẬT NỘI DUNG TEXT CHO TOOLTIP TỪ DATASET CỦA PHẦN TỬ ĐƯỢC CHỈ ĐỊNH
+    function updateTooltipContent(element) {
+        const code = element.getAttribute('data-code');
+        const abstract = element.getAttribute('data-abstract');
+        const desc = element.getAttribute('data-desc');
+        const alt = element.getAttribute('data-alt');
+
+        if (!code) return false;
+
+        ttTitle.innerText = "Mã lệnh: " + code;
+        ttAbstract.innerText = "Cấu trúc: " + abstract;
+        ttDesc.innerText = "Mô tả ngắn: " + desc;
+        ttAlt.innerText = "Lệnh tương đương/đối lập: " + alt;
+        return true;
+    }
+
+    // HÀM TÍNH TOÁN VÀ DI CHUYỂN TỌA ĐỘ TOOLTIP THEO CON TRỎ CHUỘT / ĐIỂM CHẠM CẢM ỨNG
+    function positionTooltip(e) {
+        // Hỗ trợ đồng thời cả tọa độ chuột (e.pageX) và hệ cảm ứng đa điểm của điện thoại (e.changedTouches)
+        const touch = e.pageY ? e : e.changedTouches[0];
+        const mouseX = touch.pageX;
+        const mouseY = touch.pageY;
+        
+        // Tạo khoảng đệm cách con trỏ 15px để giao diện không che lấp tầm nhìn chữ
+        tooltip.style.left = (mouseX + 15) + 'px';
+        tooltip.style.top = (mouseY + 15) + 'px';
+    }
+
+    // HÀM HIỂN THỊ HỘP THOẠI TOOLTIP
+    function showTooltip(e, element) {
+        if (updateTooltipContent(element)) {
+            tooltip.style.display = 'block';
+            positionTooltip(e);
+        }
+    }
+
+    // HÀM ẨN HỘP THOẠI TOOLTIP
+    function hideTooltip() {
+        tooltip.style.display = 'none';
+    }
+
+    // ĐÓNG GÓI BỘ LẮNG NGHE SỰ KIỆN HYBRID TƯƠNG TÁC CHO TỪNG PHẦN TỬ MÃ LỆNH
+    function setupInteractiveEvents(element) {
+        
+        // SỰ KIỆN 1: Rê chuột vào (mouseenter) - Luôn cập nhật thông tin phần tử mới đè lên phần tử đang khóa
+        element.addEventListener('mouseenter', (e) => {
+            hoveredElement = element;
+            showTooltip(e, element);
+        });
+
+        // SỰ KIỆN 2: Di chuyển chuột bên trong phần tử (mousemove) - Cập nhật vị trí bám đuổi liên tục
+        element.addEventListener('mousemove', positionTooltip);
+
+        // SỰ KIỆN 3: Rời chuột khỏi phần tử (mouseleave) - Trọng tâm xử lý logic Fallback
+        element.addEventListener('mouseleave', () => {
+            hoveredElement = null;
+            
+            if (lockedElement) {
+                // Nếu đang có một phần tử khác bị KHÓA CỐ ĐỊNH, trả nội dung hiển thị về lại phần tử đó chứ không ẩn đi
+                updateTooltipContent(lockedElement);
+            } else {
+                // Nếu không có phần tử nào bị khóa trước đó, tiến hành đóng hộp thoại bình thường
+                hideTooltip();
+            }
+        });
+
+        // SỰ KIỆN 4: Click chuột / Chạm Tap màn hình điện thoại - Xử lý bẻ khóa hoặc hoán đổi ổ khóa
+        element.addEventListener('click', (e) => {
+            // Ngăn chặn sự kiện nổi bọt lên tài liệu gốc nhằm chống kích hoạt lệnh lật mặt thẻ mặc định của Anki
+            e.stopPropagation(); 
+
+            if (lockedElement === element) {
+                // KỊCH BẢN A: Click lại chính phần tử đang khóa -> Giải phóng khóa trở về trạng thái tự do
+                lockedElement = null;
+                // Thẻ không bị ẩn ngay tại đây vì chuột của bạn vẫn đang hover trên mục này
+            } else {
+                // KỊCH BẢN B: Click vào một phần tử mới (Cho dù đang tự do hay đang có một đứa khác khóa)
+                // Hệ thống tự động giải phóng mục cũ và thiết lập ổ khóa cố định lên mục hiện tại này
+                lockedElement = element;
+                showTooltip(e, element);
+            }
+        });
+    }
+
+    // DUYỆT QUA TOÀN BỘ CÁC THÀNH PHẦN CHỈ ĐỊNH (CẢ DÒNG TRIGGER VÀ TOKEN ĐƠN LẺ) ĐỂ TRIỂN KHAI SỰ KIỆN LAI
+    document.querySelectorAll('.code-line.line-trigger, .token-trigger').forEach(el => {
+        setupInteractiveEvents(el);
+    });
+
+    // SỰ KIỆN TOÀN CỤC: Click/Tap vào bất kỳ vùng không gian trống nào ngoài vùng mã lệnh sẽ giải phóng hoàn toàn khóa và ẩn Tooltip
+    document.addEventListener('click', () => {
+        lockedElement = null;
+        hoveredElement = null;
+        hideTooltip();
+    });
+</script>
+
+</body>
+</html>
